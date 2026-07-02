@@ -1,0 +1,14 @@
+pandas
+numpy
+scikit-learn
+xgboost
+lightgbm
+shap
+datasets
+tabfm[pytorch]
+torch
+matplotlib
+pyyaml
+tqdm
+psutil
+pytest
