@@ -6,6 +6,8 @@ Every model in MODEL_REGISTRY exposes:
 so the eval harness (run.py) can treat them interchangeably.
 """
 
+import os
+
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
@@ -18,21 +20,31 @@ def build_tabfm():
     return TabFMClassifier(model=model)
 
 
-def build_sap_rpt(bagging=8, max_context_size=8192):
+def build_sap_rpt(bagging=None, max_context_size=None):
     """SAP's zero-shot tabular in-context-learning model (formerly ConTextTab).
 
     Gated on HuggingFace -- requires requesting access at
     https://huggingface.co/SAP/sap-rpt-1-oss and authenticating
     (`huggingface-cli login` or HF_TOKEN) before this will load weights.
 
-    Default `bagging`/`max_context_size` match the model card's recommended
-    settings, which is also what drives its ~80GB GPU recommendation (that
-    figure is about inference-time activation memory across bagged passes,
-    not checkpoint size -- the weights themselves are only ~65MB). Reduce
-    both for constrained hardware, at some cost to robustness -- itself a
-    relevant data point for RQ3 (real inference cost of in-context learning).
+    Default `bagging`/`max_context_size` (8 / 8192) match the model card's
+    recommended settings, which is also what drives its ~80GB GPU
+    recommendation (that figure is about inference-time activation memory
+    across bagged passes, not checkpoint size -- the weights themselves are
+    only ~65MB). Reduce both for constrained hardware, at some cost to
+    robustness -- itself a relevant data point for RQ3 (real inference cost
+    of in-context learning).
+
+    Overridable via SAP_RPT_BAGGING / SAP_RPT_MAX_CONTEXT_SIZE env vars so
+    scripts (e.g. the Colab notebook) can constrain memory use without a
+    code change.
     """
     from sap_rpt_oss import SAP_RPT_OSS_Classifier
+
+    if bagging is None:
+        bagging = int(os.environ.get("SAP_RPT_BAGGING", 8))
+    if max_context_size is None:
+        max_context_size = int(os.environ.get("SAP_RPT_MAX_CONTEXT_SIZE", 8192))
 
     return SAP_RPT_OSS_Classifier(bagging=bagging, max_context_size=max_context_size)
 
