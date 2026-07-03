@@ -12,8 +12,12 @@ and scope.
 
 ## Setup
 
+Requires **Python 3.11+** (`tabfm` on PyPI has `requires_python >= 3.11`;
+on 3.10 or older, `pip install tabfm` fails with a misleading
+"no matching distribution" error rather than a clear version message).
+
 ```bash
-python -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .

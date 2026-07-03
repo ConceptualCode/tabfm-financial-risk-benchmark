@@ -2,7 +2,7 @@
 name = "tabfm-bench"
 version = "0.1.0"
 description = "Zero-shot tabular foundation model vs. tuned GBMs on financial risk prediction"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 
 [build-system]
 requires = ["setuptools>=68"]
