@@ -2,29 +2,33 @@
 
 ## Thesis
 
-Do zero-shot tabular foundation models (TabFM) hold up against tuned gradient
-boosting on real financial risk tasks — not just on accuracy, but on the
-things that actually decide whether a model ships to production?
+Do zero-shot tabular foundation models — Google's TabFM and SAP's
+sap-rpt-1-oss — hold up against tuned gradient boosting on real financial
+risk tasks — not just on accuracy, but on the things that actually decide
+whether a model ships to production?
 
 ## Primary Objective
 
-Produce a rigorous, reproducible benchmark of TabFM vs. established baselines
-on the FinBench suite (credit default, loan default, fraud, churn), evaluated
-across predictive performance, calibration, operational cost, and
-explainability — and publish honest findings, including where TabFM loses.
+Produce a rigorous, reproducible benchmark of TabFM and SAP-RPT vs.
+established baselines on the FinBench suite (credit default, loan default,
+fraud, churn), evaluated across predictive performance, calibration,
+operational cost, and explainability — and publish honest findings,
+including where the foundation models lose.
 
 ## Research Questions
 
-### 1. How does TabFM's zero-shot performance compare to tuned XGBoost/LightGBM across all 10 FinBench datasets?
+### 1. How do TabFM and SAP-RPT's zero-shot performance compare to tuned XGBoost/LightGBM across all 10 FinBench datasets?
 
 The foundational question. Foundation models are marketed as "no more manual
 tuning," but that claim only matters if it holds up against models that *are*
 tuned — the comparison a hiring manager would actually make. Running it
 across all 10 datasets (not just one favorable one) guards against
 cherry-picking and shows the benchmark's credibility comes from breadth, not
-a single good number.
+a single good number. Comparing *two* independently-built foundation models
+against the same baselines also tests whether any finding is specific to one
+architecture or a more general property of zero-shot tabular ICL.
 
-### 2. Is TabFM well-calibrated, or does it need post-hoc calibration?
+### 2. Are TabFM and SAP-RPT well-calibrated, or do they need post-hoc calibration?
 
 Accuracy/AUC only measure whether the model ranks risky vs. safe cases
 correctly — they say nothing about whether "0.73 probability of default"
@@ -48,24 +52,31 @@ better).
 ### 3. What's the real inference cost of in-context learning vs. a pre-trained GBM?
 
 This attacks the model's core marketing claim directly. "No training needed"
-sounds free, but TabFM processes the entire context (training set) on every
-prediction call — so the cost a GBM pays once, upfront, during training,
-TabFM may pay repeatedly, at inference time. If true, "zero-shot" doesn't
-mean "cheaper," it means "cost moved elsewhere" — exactly the kind of nuance
-teams miss when adopting new foundation models without checking total cost
-of ownership.
+sounds free, but both TabFM and SAP-RPT process the entire context (training
+set) on every prediction call — so the cost a GBM pays once, upfront, during
+training, they may pay repeatedly, at inference time. If true, "zero-shot"
+doesn't mean "cheaper," it means "cost moved elsewhere" — exactly the kind of
+nuance teams miss when adopting new foundation models without checking total
+cost of ownership. This question also surfaces a real, concrete finding from
+scaffolding this project: TabFM's checkpoint alone needs ~12-16GB of RAM to
+load (no GPU required), while SAP-RPT's weights are tiny (~65MB) but its
+default settings can need up to ~80GB of GPU memory for inference-time
+activations — two very different cost profiles hiding behind the same
+"zero-shot, no training" pitch.
 
-### 4. Does SHAP work on TabFM the way it does on GBMs?
+### 4. Does SHAP work on TabFM and SAP-RPT the way it does on GBMs?
 
 The highest-upside, most differentiated question — likely nobody else has
 written about it yet, which is what makes a portfolio piece get noticed
 instead of blending into the pile of "I benchmarked model X" posts.
 Explainability tooling was built assuming tree-based or simple parametric
-models; a 24-block causal transformer doing in-context learning is a very
-different computational object, and it's an open question whether SHAP's
-assumptions (feature independence approximations, background datasets, etc.)
-transfer cleanly. A concrete finding — even "it runs but attributions are
-unstable/misleading" — is a real, citable, non-obvious result.
+models; in-context-learning transformers are a very different computational
+object, and it's an open question whether SHAP's assumptions (feature
+independence approximations, background datasets, etc.) transfer cleanly to
+either of them. A concrete finding — even "it runs but attributions are
+unstable/misleading" — is a real, citable, non-obvious result, and comparing
+two architecturally-different foundation models strengthens the claim if
+both show the same weakness.
 
 **SHAP (SHapley Additive exPlanations), concretely:** explains an individual
 prediction by quantifying how much each input feature pushed that specific
@@ -92,6 +103,7 @@ candidates."
 ## Scope — In
 
 - Full FinBench suite (10 datasets: credit default, loan default, fraud, churn)
+- Foundation models: TabFM and SAP-RPT (sap-rpt-1-oss)
 - Baselines: XGBoost, LightGBM, and a logistic regression floor
 - Metrics: AUC-ROC, PR-AUC, log-loss, Brier score / calibration curves,
   cost-weighted metric, inference latency/memory
@@ -101,7 +113,7 @@ candidates."
 
 ## Scope — Out
 
-- No TabFM fine-tuning (it's zero-shot by design)
+- No fine-tuning of either foundation model (both are zero-shot by design)
 - No multi-table/relational datasets (e.g., full Home Credit with bureau
   data) — single-table tabular only
 - No production deployment/serving system — benchmarking only

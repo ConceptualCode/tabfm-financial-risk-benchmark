@@ -18,6 +18,25 @@ def build_tabfm():
     return TabFMClassifier(model=model)
 
 
+def build_sap_rpt(bagging=8, max_context_size=8192):
+    """SAP's zero-shot tabular in-context-learning model (formerly ConTextTab).
+
+    Gated on HuggingFace -- requires requesting access at
+    https://huggingface.co/SAP/sap-rpt-1-oss and authenticating
+    (`huggingface-cli login` or HF_TOKEN) before this will load weights.
+
+    Default `bagging`/`max_context_size` match the model card's recommended
+    settings, which is also what drives its ~80GB GPU recommendation (that
+    figure is about inference-time activation memory across bagged passes,
+    not checkpoint size -- the weights themselves are only ~65MB). Reduce
+    both for constrained hardware, at some cost to robustness -- itself a
+    relevant data point for RQ3 (real inference cost of in-context learning).
+    """
+    from sap_rpt_oss import SAP_RPT_OSS_Classifier
+
+    return SAP_RPT_OSS_Classifier(bagging=bagging, max_context_size=max_context_size)
+
+
 def build_xgboost():
     from xgboost import XGBClassifier
 
@@ -47,6 +66,7 @@ def build_logreg():
 
 MODEL_REGISTRY = {
     "tabfm": build_tabfm,
+    "sap_rpt": build_sap_rpt,
     "xgboost": build_xgboost,
     "lightgbm": build_lightgbm,
     "logreg": build_logreg,

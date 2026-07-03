@@ -36,6 +36,7 @@ datasets:
 
 models:
   - tabfm
+  - sap_rpt
   - xgboost
   - lightgbm
   - logreg
