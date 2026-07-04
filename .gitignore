@@ -4,6 +4,7 @@ __pycache__/
 venv/
 .env
 results/*.json
+results/*.jsonl
 results/*.csv
 results/*.png
 !results/.gitkeep

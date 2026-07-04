@@ -1,13 +1,28 @@
-"""CLI entrypoint: runs every (dataset, model) pair in configs/datasets.yaml
-and writes results/results.csv plus results/shap_agreement.csv.
+"""CLI entrypoint: runs every (dataset, model) pair in configs/datasets.yaml.
+
+Writes incrementally to results/*.jsonl (one JSON object appended to disk
+immediately after each result is computed), then exports results/*.csv from
+whatever's accumulated. Previously all results only existed in memory and
+were written once at the very end of the run -- a crash, an OOM on one
+model, or a Colab session disconnect at any point before that final line
+lost everything computed so far. Incremental writes mean an interruption
+only costs the remaining unfinished work. A single (dataset, model)
+failure is also caught and logged rather than aborting the whole grid.
+
+RESULTS_DIR can be overridden via the TABFM_RESULTS_DIR env var -- e.g. a
+Google Drive-mounted path in Colab, so writes survive a session disconnect
+without needing to remember to run a download step.
 
 Usage:
     python scripts/run_benchmark.py
     python scripts/run_benchmark.py --datasets cd1 ld1 --models tabfm xgboost
+    python scripts/run_benchmark.py --fresh          # clear prior results.jsonl first
+    python scripts/run_benchmark.py --export-only     # just regenerate CSVs from existing jsonl
 """
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -21,12 +36,36 @@ from tabfm_bench.models import RAW_INPUT_MODELS, get_model
 from tabfm_bench.run import run_single
 
 ROOT = Path(__file__).resolve().parents[1]
-RESULTS_DIR = ROOT / "results"
+RESULTS_DIR = Path(os.environ.get("TABFM_RESULTS_DIR", ROOT / "results"))
+
+RESULTS_JSONL = RESULTS_DIR / "results.jsonl"
+SHAP_JSONL = RESULTS_DIR / "shap_agreement.jsonl"
+AGREEMENT_JSONL = RESULTS_DIR / "prediction_agreement.jsonl"
 
 
 def load_config():
     with open(ROOT / "configs" / "datasets.yaml") as f:
         return yaml.safe_load(f)
+
+
+def _append_jsonl(path: Path, row: dict):
+    with open(path, "a") as f:
+        f.write(json.dumps(row) + "\n")
+
+
+def _read_jsonl(path: Path) -> list:
+    if not path.exists():
+        return []
+    with open(path) as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+def _export_csv(jsonl_path: Path, csv_path: Path):
+    rows = _read_jsonl(jsonl_path)
+    if not rows:
+        return
+    pd.json_normalize(rows).to_csv(csv_path, index=False)
+    print(f"Wrote {len(rows)} rows to {csv_path}")
 
 
 def main():
@@ -39,13 +78,31 @@ def main():
     parser.add_argument("--datasets", nargs="*", default=all_datasets)
     parser.add_argument("--models", nargs="*", default=all_models)
     parser.add_argument("--skip-shap", action="store_true")
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Clear existing results/*.jsonl first, instead of appending to a prior run "
+        "(without this, rerunning the same dataset/model pair adds a duplicate row).",
+    )
+    parser.add_argument(
+        "--export-only",
+        action="store_true",
+        help="Skip running any models; just regenerate results/*.csv from existing "
+        "results/*.jsonl (useful after an interrupted run).",
+    )
     args = parser.parse_args()
 
-    RESULTS_DIR.mkdir(exist_ok=True)
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    results = []
-    shap_rows = []
-    prediction_agreement_rows = []
+    if args.export_only:
+        _export_csv(RESULTS_JSONL, RESULTS_DIR / "results.csv")
+        _export_csv(SHAP_JSONL, RESULTS_DIR / "shap_agreement.csv")
+        _export_csv(AGREEMENT_JSONL, RESULTS_DIR / "prediction_agreement.csv")
+        return
+
+    if args.fresh:
+        for path in (RESULTS_JSONL, SHAP_JSONL, AGREEMENT_JSONL):
+            path.unlink(missing_ok=True)
 
     for dataset_config in tqdm(args.datasets, desc="datasets"):
         fitted_models = {}
@@ -54,68 +111,67 @@ def main():
         split = load_finbench(dataset_config) if not args.skip_shap else None
 
         for model_name in tqdm(args.models, desc=dataset_config, leave=False):
-            result = run_single(
-                dataset_config, model_name, protected_attribute=protected_attrs.get(dataset_config)
-            )
-            results.append(result)
+            try:
+                result = run_single(
+                    dataset_config,
+                    model_name,
+                    protected_attribute=protected_attrs.get(dataset_config),
+                )
+                _append_jsonl(RESULTS_JSONL, result)
+            except Exception as e:
+                tqdm.write(f"FAILED: {dataset_config}/{model_name} -- {type(e).__name__}: {e}")
+                continue
 
             if not args.skip_shap:
-                model = get_model(
-                    model_name,
-                    cat_idx=split.cat_idx,
-                    num_idx=split.num_idx,
-                    col_name=split.col_name,
-                )
-                if model_name in RAW_INPUT_MODELS:
-                    X_train, X_test = split.X_train_df, split.X_test_df
-                else:
-                    X_train, X_test = split.X_train, split.X_test
-                model.fit(X_train, split.y_train)
-                fitted_models[model_name] = model
-                full_probas[model_name] = model.predict_proba(X_test)[:, 1]
-                shap_values[model_name] = get_shap_values(
-                    model, model_name, X_train, X_test[:50]
-                )
+                try:
+                    model = get_model(
+                        model_name,
+                        cat_idx=split.cat_idx,
+                        num_idx=split.num_idx,
+                        col_name=split.col_name,
+                    )
+                    if model_name in RAW_INPUT_MODELS:
+                        X_train, X_test = split.X_train_df, split.X_test_df
+                    else:
+                        X_train, X_test = split.X_train, split.X_test
+                    model.fit(X_train, split.y_train)
+                    fitted_models[model_name] = model
+                    full_probas[model_name] = model.predict_proba(X_test)[:, 1]
+                    shap_values[model_name] = get_shap_values(
+                        model, model_name, X_train, X_test[:50]
+                    )
+                except Exception as e:
+                    tqdm.write(
+                        f"SHAP FAILED: {dataset_config}/{model_name} -- {type(e).__name__}: {e}"
+                    )
 
         if not args.skip_shap and len(shap_values) > 1:
             names = list(shap_values)
             for i in range(len(names)):
                 for j in range(i + 1, len(names)):
-                    agreement = compare_shap_agreement(
-                        shap_values[names[i]], shap_values[names[j]]
-                    )
-                    shap_rows.append(
-                        {
-                            "dataset": dataset_config,
-                            "model_a": names[i],
-                            "model_b": names[j],
-                            "shap_rank_agreement": agreement,
-                        }
-                    )
-                    pred_agreement = compare_predictions(
-                        split.y_test, full_probas[names[i]], full_probas[names[j]]
-                    )
-                    prediction_agreement_rows.append(
-                        {
-                            "dataset": dataset_config,
-                            "model_a": names[i],
-                            "model_b": names[j],
-                            **pred_agreement,
-                        }
-                    )
+                    shap_row = {
+                        "dataset": dataset_config,
+                        "model_a": names[i],
+                        "model_b": names[j],
+                        "shap_rank_agreement": compare_shap_agreement(
+                            shap_values[names[i]], shap_values[names[j]]
+                        ),
+                    }
+                    _append_jsonl(SHAP_JSONL, shap_row)
 
-    results_df = pd.json_normalize(results)
-    results_df.to_csv(RESULTS_DIR / "results.csv", index=False)
+                    agreement_row = {
+                        "dataset": dataset_config,
+                        "model_a": names[i],
+                        "model_b": names[j],
+                        **compare_predictions(
+                            split.y_test, full_probas[names[i]], full_probas[names[j]]
+                        ),
+                    }
+                    _append_jsonl(AGREEMENT_JSONL, agreement_row)
 
-    if shap_rows:
-        pd.DataFrame(shap_rows).to_csv(RESULTS_DIR / "shap_agreement.csv", index=False)
-
-    if prediction_agreement_rows:
-        pd.DataFrame(prediction_agreement_rows).to_csv(
-            RESULTS_DIR / "prediction_agreement.csv", index=False
-        )
-
-    print(f"Wrote {len(results_df)} rows to {RESULTS_DIR / 'results.csv'}")
+    _export_csv(RESULTS_JSONL, RESULTS_DIR / "results.csv")
+    _export_csv(SHAP_JSONL, RESULTS_DIR / "shap_agreement.csv")
+    _export_csv(AGREEMENT_JSONL, RESULTS_DIR / "prediction_agreement.csv")
 
 
 if __name__ == "__main__":
