@@ -4,16 +4,48 @@
 
 Do zero-shot tabular foundation models — Google's TabFM and SAP's
 sap-rpt-1-oss — hold up against tuned gradient boosting on real financial
-risk tasks — not just on accuracy, but on the things that actually decide
-whether a model ships to production?
+risk tasks, well enough to justify a real production decision — not just on
+accuracy, but on the things that actually decide whether a model ships to
+production? The deliverable is production advice grounded in experimental
+evidence, not an academic leaderboard.
+
+## Production Constraint: Licensing (read this first)
+
+Before any benchmark result matters, both foundation models have a
+checkpoint-level licensing restriction that blocks commercial deployment
+outright, independent of performance:
+
+| | Code license | Pretrained weights license |
+|---|---|---|
+| **TabFM** | Apache 2.0 (permissive) | **TabFM Non-Commercial License v1.0** |
+| **SAP-RPT** | Apache 2.0 (permissive) | **Research-only** (inherited from the T4/TabLib training-data lineage) |
+
+Confirmed against both HuggingFace model cards and both underlying GitHub
+repos (`google-research/tabfm`, `SAP-samples/sap-rpt-1-oss`). The permissive
+code license is a red herring — you can't use either model without its
+checkpoint (retraining an equivalent from scratch erases the "zero-shot, no
+training" value proposition entirely), and the checkpoint itself is
+restricted to non-commercial/research use in both cases. XGBoost, LightGBM,
+and logistic regression carry no such restriction: you train on your own
+data and own the resulting model outright.
+
+**Headline finding this produces:** regardless of benchmark performance,
+neither TabFM nor SAP-RPT can be legally deployed in a commercial financial
+product today. A team would need to either negotiate separate commercial
+licensing directly with Google/SAP, or train an equivalent model from
+scratch on properly-licensed data. This benchmark project itself is
+squarely research use and unaffected; it's a live production deployment
+serving real customer decisions that the license would block. This finding
+should lead the final write-up, ahead of any accuracy/calibration numbers.
 
 ## Primary Objective
 
 Produce a rigorous, reproducible benchmark of TabFM and SAP-RPT vs.
 established baselines on the FinBench suite (credit default, loan default,
 fraud, churn), evaluated across predictive performance, calibration,
-operational cost, and explainability — and publish honest findings,
-including where the foundation models lose.
+operational cost, and explainability — and turn the results into an honest
+production recommendation, including the licensing constraint above and
+where the foundation models lose on the merits.
 
 ## Research Questions
 
@@ -103,13 +135,21 @@ candidates."
 ## Scope — In
 
 - Full FinBench suite (10 datasets: credit default, loan default, fraud, churn)
-- Foundation models: TabFM and SAP-RPT (sap-rpt-1-oss)
-- Baselines: XGBoost, LightGBM, and a logistic regression floor
-- Metrics: AUC-ROC, PR-AUC, log-loss, Brier score / calibration curves,
-  cost-weighted metric, inference latency/memory
+- Foundation models: TabFM and SAP-RPT (sap-rpt-1-oss), fed raw/native input
+  (real column names, real category values) matching how each is actually
+  documented to be used in production, not the same pre-encoded array fed to
+  the classical baselines
+- Baselines: XGBoost, LightGBM (categorical-aware), and a logistic regression
+  floor (one-hot encoded categoricals) — realistic production-grade
+  preprocessing for each, not a strawman
+- Fixed random seeds on all classical baselines for reproducibility
+- Metrics: AUC-ROC, PR-AUC, recall, F1, log-loss, Brier score / calibration
+  curves, cost-weighted score with an actual threshold sweep to find the
+  cost-minimizing operating point (not just a fixed 0.5 cutoff), inference
+  latency/memory
 - Explainability comparison (SHAP feasibility + agreement across models)
 - Deliverables: public GitHub repo (clean, reusable eval harness), written
-  narrative/blog post, small interactive demo
+  narrative/production recommendation, small interactive demo
 
 ## Scope — Out
 
@@ -119,9 +159,20 @@ candidates."
 - No production deployment/serving system — benchmarking only
 - No hyperparameter search beyond sane defaults for baselines (not a
   "who can tune harder" contest)
+- No repeated-run/bootstrap confidence intervals in this pass — single-split
+  results should be treated as directional, not proof, for any two models
+  that land close together. Documented as a caveat in the write-up rather
+  than built now.
+- No per-request (P50/P99) latency breakdown — cost.py measures whole-batch
+  fit/predict time, which conflates a live-API scoring scenario with a batch
+  scoring scenario. Noted as a limitation, not built now.
+- No determinism/consistency check on repeated foundation-model calls
+  (relevant given SAP-RPT's bagging) — a real production/fair-lending
+  question, deferred to a later pass.
 
 ## Definition of Done
 
 Repo runs end-to-end from a single command per dataset. Results table,
 calibration plots, and SHAP comparison are reproducible. A written narrative
-delivers a clear, honest verdict — not just a leaderboard.
+delivers a clear, honest production recommendation — including the
+licensing constraint above — not just a leaderboard.

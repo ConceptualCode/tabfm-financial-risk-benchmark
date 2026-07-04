@@ -1,9 +1,33 @@
-"""Loaders for the FinBench (yuweiyin/FinBench) financial risk suite."""
+"""Loaders for the FinBench (yuweiyin/FinBench) financial risk suite.
 
+Loaded via direct file download (huggingface_hub.hf_hub_download) rather
+than `datasets.load_dataset` -- FinBench ships as a legacy HF "dataset
+script" (FinBench.py), and current `datasets` versions (we use 5.0.0) have
+fully dropped support for that pattern, failing with:
+    RuntimeError: Dataset scripts are no longer supported, but found FinBench.py
+The underlying data is plain per-config .npy files, so we load those
+directly instead.
+
+Each split is exposed in two representations:
+  - X_{split}: pre-encoded array (categoricals integer-encoded, numerics
+    standardized) -- what the classical baselines (XGBoost/LightGBM/logreg)
+    use, matching how a team would realistically feed them.
+  - X_{split}_df: a pandas DataFrame with real column names and real
+    category strings (reconstructed from stat_dict.json's cat_str mapping),
+    raw (unstandardized) numeric values -- what TabFM/SAP-RPT use, matching
+    how those models are documented to be used (they're built to handle
+    real-world mixed-type tables, not opaque pre-encoded arrays). See
+    OBJECTIVES.md's "Production Constraint" and RQ1 discussion.
+"""
+
+import json
 from dataclasses import dataclass
 
 import numpy as np
-from datasets import load_dataset
+import pandas as pd
+from huggingface_hub import hf_hub_download
+
+REPO_ID = "yuweiyin/FinBench"
 
 
 @dataclass
@@ -15,34 +39,64 @@ class FinBenchSplit:
     y_val: np.ndarray
     X_test: np.ndarray
     y_test: np.ndarray
+    X_train_df: pd.DataFrame
+    X_val_df: pd.DataFrame
+    X_test_df: pd.DataFrame
     cat_idx: list
     num_idx: list
     col_name: list
 
 
-def load_finbench(config: str) -> FinBenchSplit:
-    """Load one FinBench task (e.g. "cd1", "ld2", "cf1", "cc3").
+def _download(config: str, filename: str) -> str:
+    return hf_hub_download(
+        repo_id=REPO_ID, filename=f"data/{config}/{filename}", repo_type="dataset"
+    )
 
-    Returns train/validation/test arrays plus the categorical/numerical
-    column indices FinBench ships with, so downstream models (TabFM,
-    LightGBM) can be told which columns are categorical.
+
+def _raw_dataframe(
+    X_unscale: np.ndarray, cat_idx: list, cat_str: list, col_name: list
+) -> pd.DataFrame:
+    """Reconstructs a human-readable DataFrame from FinBench's unscaled
+    array: categorical columns are still integer-coded even in the
+    "unscale" file, so we map each code back to its real string label via
+    stat_dict.json's cat_str (cat_str[i] lists the labels for cat_idx[i]).
     """
-    ds = load_dataset("yuweiyin/FinBench", config)
+    df = pd.DataFrame(X_unscale, columns=col_name)
+    for pos, col_idx in enumerate(cat_idx):
+        code_to_label = dict(enumerate(cat_str[pos]))
+        col = col_name[col_idx]
+        df[col] = df[col].astype(int).map(code_to_label)
+    num_cols = [col_name[i] for i in range(len(col_name)) if i not in cat_idx]
+    df[num_cols] = df[num_cols].astype(float)
+    return df
 
-    def _extract(split):
-        rows = ds[split]
-        X = np.asarray(rows["X_ml"])
-        y = np.asarray(rows["y"])
+
+def load_finbench(config: str) -> FinBenchSplit:
+    """Load one FinBench task (e.g. "cd1", "ld2", "cf1", "cc3")."""
+
+    def _load_encoded(split_name: str):
+        X = np.load(_download(config, f"X_{split_name}.npy"), allow_pickle=True)
+        X = X.astype(np.float64)
+        y = np.load(_download(config, f"y_{split_name}.npy"), allow_pickle=True)
         return X, y
 
-    X_train, y_train = _extract("train")
-    X_val, y_val = _extract("validation")
-    X_test, y_test = _extract("test")
+    def _load_unscaled(split_name: str):
+        return np.load(_download(config, f"X_{split_name}_unscale.npy"), allow_pickle=True)
 
-    meta = ds["train"][0]
-    cat_idx = meta.get("cat_idx", [])
-    num_idx = meta.get("num_idx", [])
-    col_name = meta.get("col_name", [])
+    X_train, y_train = _load_encoded("train")
+    X_val, y_val = _load_encoded("val")
+    X_test, y_test = _load_encoded("test")
+
+    with open(_download(config, "stat_dict.json")) as f:
+        stat = json.load(f)
+    cat_idx = stat.get("cat_idx", [])
+    num_idx = stat.get("num_idx", [])
+    col_name = stat.get("col_name", [])
+    cat_str = stat.get("cat_str", [])
+
+    X_train_df = _raw_dataframe(_load_unscaled("train"), cat_idx, cat_str, col_name)
+    X_val_df = _raw_dataframe(_load_unscaled("val"), cat_idx, cat_str, col_name)
+    X_test_df = _raw_dataframe(_load_unscaled("test"), cat_idx, cat_str, col_name)
 
     return FinBenchSplit(
         config=config,
@@ -52,6 +106,9 @@ def load_finbench(config: str) -> FinBenchSplit:
         y_val=y_val,
         X_test=X_test,
         y_test=y_test,
+        X_train_df=X_train_df,
+        X_val_df=X_val_df,
+        X_test_df=X_test_df,
         cat_idx=cat_idx,
         num_idx=num_idx,
         col_name=col_name,

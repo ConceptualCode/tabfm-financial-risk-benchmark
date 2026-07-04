@@ -17,7 +17,10 @@ def get_shap_values(model, model_name: str, X_background: np.ndarray, X_explain:
     positive class.
     """
     if model_name in ("xgboost", "lightgbm"):
-        explainer = shap.TreeExplainer(model)
+        # LightGBM is wrapped in _CategoricalAwareLGBM (models.py); SHAP's
+        # TreeExplainer needs the real LGBMClassifier, not the wrapper.
+        tree_model = getattr(model, "_model", model)
+        explainer = shap.TreeExplainer(tree_model)
         values = explainer.shap_values(X_explain)
         if isinstance(values, list):
             values = values[1]

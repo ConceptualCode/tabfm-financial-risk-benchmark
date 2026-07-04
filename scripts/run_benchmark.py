@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from tabfm_bench.data import load_finbench
 from tabfm_bench.explain import compare_shap_agreement, get_shap_values
-from tabfm_bench.models import get_model
+from tabfm_bench.models import RAW_INPUT_MODELS, get_model
 from tabfm_bench.run import run_single
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,18 +47,27 @@ def main():
     for dataset_config in tqdm(args.datasets, desc="datasets"):
         fitted_models = {}
         shap_values = {}
+        split = load_finbench(dataset_config) if not args.skip_shap else None
 
         for model_name in tqdm(args.models, desc=dataset_config, leave=False):
             result = run_single(dataset_config, model_name)
             results.append(result)
 
             if not args.skip_shap:
-                split = load_finbench(dataset_config)
-                model = get_model(model_name)
-                model.fit(split.X_train, split.y_train)
+                model = get_model(
+                    model_name,
+                    cat_idx=split.cat_idx,
+                    num_idx=split.num_idx,
+                    col_name=split.col_name,
+                )
+                if model_name in RAW_INPUT_MODELS:
+                    X_train, X_test = split.X_train_df, split.X_test_df
+                else:
+                    X_train, X_test = split.X_train, split.X_test
+                model.fit(X_train, split.y_train)
                 fitted_models[model_name] = model
                 shap_values[model_name] = get_shap_values(
-                    model, model_name, split.X_train, split.X_test[:50]
+                    model, model_name, X_train, X_test[:50]
                 )
 
         if not args.skip_shap and len(shap_values) > 1:
