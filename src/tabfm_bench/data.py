@@ -61,19 +61,33 @@ def _raw_dataframe(
     "unscale" file, so we map each code back to its real string label via
     stat_dict.json's cat_str (cat_str[i] lists the labels for cat_idx[i]).
 
-    Indexes by position (.iloc), not by column name -- at least one
-    FinBench config (cf2) has duplicate column names in its own
-    stat_dict.json (two different underlying Home Credit columns collapsed
-    to the same human-readable label), which breaks name-based lookups
-    with an ambiguous "Columns must be same length as key" error.
+    Builds each column as its own typed Series and assembles them with
+    pd.concat, rather than constructing one DataFrame from the raw object
+    array and coercing dtypes on slices afterward. Two reasons:
+      - Positional (not name-based) throughout -- at least one FinBench
+        config (cf2) has duplicate column names in its own stat_dict.json,
+        which breaks name-based lookups with an ambiguous "Columns must be
+        same length as key" error.
+      - `df.iloc[:, positions] = df.iloc[:, positions].astype(float)` on a
+        DataFrame built from a single object-dtype array mutates values in
+        place but does NOT change the column block's dtype -- every column
+        (including numeric ones) was still reported as dtype `object`
+        downstream, which caused SAP-RPT/TabFM's type inference to treat
+        numeric features as strings ("dtype is object... converting to
+        str"). Casting each column as an individual Series does properly
+        change its dtype.
     """
-    df = pd.DataFrame(X_unscale, columns=col_name)
-    for pos, col_idx in enumerate(cat_idx):
-        code_to_label = dict(enumerate(cat_str[pos]))
-        df.iloc[:, col_idx] = df.iloc[:, col_idx].astype(int).map(code_to_label)
-    num_positions = [i for i in range(len(col_name)) if i not in cat_idx]
-    df.iloc[:, num_positions] = df.iloc[:, num_positions].astype(float)
-    return df
+    cat_labels = dict(zip(cat_idx, cat_str))
+    columns = []
+    for i, name in enumerate(col_name):
+        raw_col = X_unscale[:, i]
+        if i in cat_labels:
+            code_to_label = dict(enumerate(cat_labels[i]))
+            series = pd.Series(raw_col, name=name).astype(int).map(code_to_label)
+        else:
+            series = pd.Series(raw_col, name=name).astype(float)
+        columns.append(series)
+    return pd.concat(columns, axis=1)
 
 
 def load_finbench(config: str) -> FinBenchSplit:
