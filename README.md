@@ -41,8 +41,11 @@ activations at scale; reduce `bagging`/`max_context_size` in
 
 Benchmarked on [FinBench](https://huggingface.co/datasets/yuweiyin/FinBench)
 (10 binary-classification tasks: credit-card default, loan default,
-credit-card fraud, customer churn). Downloaded automatically via the
-`datasets` library the first time you run the benchmark.
+credit-card fraud, customer churn). Downloaded automatically via
+`huggingface_hub` the first time you run the benchmark -- FinBench ships as
+a legacy HF "dataset script," which current `datasets` versions no longer
+support, so `data.py` fetches the underlying per-config `.npy` files
+directly instead of using `datasets.load_dataset`.
 
 ## Usage
 
@@ -54,20 +57,25 @@ python scripts/run_benchmark.py
 python scripts/run_benchmark.py --datasets cd1 ld1 --models tabfm sap_rpt xgboost --skip-shap
 ```
 
-Results are written to `results/results.csv` (predictive metrics, calibration
-points, fit/inference cost) and `results/shap_agreement.csv`
-(cross-model explainability agreement).
+Results are written to `results/results.csv` (predictive metrics,
+calibration points, fit/inference cost, cost-minimizing threshold, and
+fairness metrics where applicable), `results/shap_agreement.csv`
+(cross-model explainability agreement), and `results/prediction_agreement.csv`
+(cross-model prediction agreement -- do models with similar accuracy
+actually agree on individual applicants?).
 
 ## Project layout
 
 ```
-configs/datasets.yaml     FinBench task list + model registry
+configs/datasets.yaml     FinBench task list, model registry, protected attributes
 src/tabfm_bench/
-  data.py                 FinBench loader
+  data.py                 FinBench loader (raw DataFrame + pre-encoded array per split)
   models.py                TabFM + SAP-RPT + XGBoost + LightGBM + logreg, common interface
-  metrics.py                AUC/PR-AUC/log-loss/Brier + calibration curve
+  metrics.py                AUC/PR-AUC/log-loss/Brier + calibration curve + cost-minimizing threshold
   cost.py                   fit/inference wall-clock + peak memory
-  explain.py                 SHAP wrapper + cross-model agreement
+  explain.py                 SHAP wrapper + cross-model SHAP agreement
+  fairness.py                disparate impact ratio + equalized-odds gap
+  agreement.py                cross-model prediction agreement
   run.py                     runs one (dataset, model) pair end to end
 scripts/run_benchmark.py   CLI: runs the full grid, writes results/
 tests/                     smoke tests (no network/heavy deps required)

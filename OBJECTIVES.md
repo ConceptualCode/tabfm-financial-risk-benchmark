@@ -38,6 +38,34 @@ squarely research use and unaffected; it's a live production deployment
 serving real customer decisions that the license would block. This finding
 should lead the final write-up, ahead of any accuracy/calibration numbers.
 
+## Related Work (read before treating any finding as novel)
+
+This is a fast-moving space -- TabFM shipped days before this project
+started -- and parts of it are already covered elsewhere. Checked directly
+rather than assumed:
+
+- ["Evaluating SAP RPT-1 for Enterprise Business Process Prediction"](https://arxiv.org/abs/2602.19237)
+  already benchmarks SAP-RPT-1-OSS against tuned XGBoost/LightGBM/CatBoost
+  on SAP's own financial-risk business scenarios (not FinBench). RQ1's
+  SAP-RPT-vs-GBM comparison substantially overlaps with this paper --
+  differentiate by citing it and by using FinBench (an independent,
+  reproducible academic benchmark) instead of SAP's internal scenarios.
+- ["High Performance, Low Reliability: Uncertainty Benchmarking for Tabular
+  Foundation Models"](https://arxiv.org/pdf/2605.28554) already covers
+  general calibration/uncertainty benchmarking for tabular FMs -- read this
+  before finalizing RQ2's narrative; don't duplicate its methodology
+  uncritically.
+- Explainability critiques of TabFM already exist (commentary + a proposed
+  purpose-built model, ShapPFN, integrating Shapley values directly into
+  the architecture) -- RQ4 should be framed as "does SHAP transfer to
+  these two specific models on financial risk data," not "is this an
+  unexplored question."
+
+**What's still a genuinely distinctive combination:** both foundation
+models together (not one), on FinBench specifically, plus the licensing
+finding above, plus RQ5/RQ6 below (fairness and cross-model agreement),
+neither of which turned up in this search.
+
 ## Primary Objective
 
 Produce a rigorous, reproducible benchmark of TabFM and SAP-RPT vs.
@@ -98,17 +126,41 @@ activations — two very different cost profiles hiding behind the same
 
 ### 4. Does SHAP work on TabFM and SAP-RPT the way it does on GBMs?
 
-The highest-upside, most differentiated question — likely nobody else has
-written about it yet, which is what makes a portfolio piece get noticed
-instead of blending into the pile of "I benchmarked model X" posts.
 Explainability tooling was built assuming tree-based or simple parametric
 models; in-context-learning transformers are a very different computational
 object, and it's an open question whether SHAP's assumptions (feature
 independence approximations, background datasets, etc.) transfer cleanly to
-either of them. A concrete finding — even "it runs but attributions are
-unstable/misleading" — is a real, citable, non-obvious result, and comparing
-two architecturally-different foundation models strengthens the claim if
-both show the same weakness.
+either of them. Others have raised this concern about TabFM in general terms
+(see Related Work above); running the actual SHAP comparison on both models
+on FinBench specifically, and reporting whether attributions are stable or
+misleading, turns commentary into a concrete, citable result.
+
+### 5. Do TabFM and SAP-RPT encode different bias patterns than a GBM trained on your own data?
+
+TabFM is trained on synthetic SCM-generated data; SAP-RPT is trained on
+scraped real-world tables (T4/TabLib). A GBM is trained fresh, only on your
+own population. Whether those very different training corpora produce
+different fair-lending outcomes -- not just different accuracy -- is a real,
+untested question none of the related work above addresses (each existing
+benchmark evaluates one model's performance, not cross-model bias).
+Evaluated via the standard disparate-impact ratio (US EEOC "four-fifths
+rule": ratio under 0.8 flags potential concern) and equalized-odds gap
+(difference in true/false-positive rates across groups), on the FinBench
+configs with a clean binary protected attribute (`gender`, present and
+verified binary in 6 of the 10 configs). Directly relevant to the SHAP/ECOA
+framing already established in RQ4 -- a model can be technically explainable
+and still produce disparate outcomes.
+
+### 6. Do TabFM and SAP-RPT actually agree with each other, or just have similar aggregate accuracy?
+
+Two models can report near-identical AUC while disagreeing on individual
+applicants -- a real production risk that no existing benchmark surfaces,
+since each evaluates one foundation model against GBMs rather than comparing
+foundation models against each other. Measured via prediction correlation,
+hard-decision agreement rate, and -- the more useful production signal --
+whether accuracy is higher on the subset where both models agree (a
+candidate operational rule: auto-decide when models agree, route
+disagreements to human review).
 
 **SHAP (SHapley Additive exPlanations), concretely:** explains an individual
 prediction by quantifying how much each input feature pushed that specific
@@ -127,10 +179,9 @@ relevant to real-world adoption.
 ### Why this set as a whole
 
 Questions 1-3 establish rigorous, unbiased evaluation — the baseline
-expectation for any ML role. Question 4 is what makes the project memorable
-rather than merely competent — the difference between "solid portfolio
-project" and "the project a hiring manager remembers after 50 other
-candidates."
+expectation for any ML role. Questions 4-6 are what make the project
+memorable rather than merely competent — each pushes past what the existing
+literature (see Related Work) has already covered on these two models.
 
 ## Scope — In
 
@@ -148,6 +199,10 @@ candidates."
   cost-minimizing operating point (not just a fixed 0.5 cutoff), inference
   latency/memory
 - Explainability comparison (SHAP feasibility + agreement across models)
+- Fair-lending audit (disparate impact ratio, equalized-odds gap) on the 6
+  FinBench configs with a clean binary protected attribute
+- Cross-model prediction agreement (not just aggregate accuracy) between
+  TabFM and SAP-RPT specifically
 - Deliverables: public GitHub repo (clean, reusable eval harness), written
   narrative/production recommendation, small interactive demo
 

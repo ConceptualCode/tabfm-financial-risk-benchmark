@@ -2,6 +2,8 @@
 
 import numpy as np
 
+from tabfm_bench.agreement import compare_predictions
+from tabfm_bench.fairness import disparate_impact_metrics
 from tabfm_bench.metrics import (
     compute_metrics,
     cost_weighted_score,
@@ -46,3 +48,35 @@ def test_find_optimal_threshold_zero_cost_when_perfectly_separable():
     )
     assert 0.0 <= best_threshold <= 1.0
     assert min_cost == 0.0
+
+
+def test_disparate_impact_ratio_is_one_when_groups_treated_identically():
+    # Perfect predictions, split evenly (2 pos/2 neg) within each group ->
+    # both groups get identical selection rate, TPR, and FPR.
+    y_true = np.array([0, 1, 0, 1, 0, 1, 0, 1])
+    y_pred = np.array([0, 1, 0, 1, 0, 1, 0, 1])
+    group_labels = np.array(["female"] * 4 + ["male"] * 4)
+    result = disparate_impact_metrics(y_true, y_pred, group_labels)
+    assert result["disparate_impact_ratio"] == 1.0
+    assert result["equalized_odds_gap"] == 0.0
+
+
+def test_disparate_impact_rejects_more_than_two_groups():
+    y_true = np.array([0, 1, 0, 1])
+    y_pred = np.array([0, 1, 0, 1])
+    group_labels = np.array(["a", "b", "c", "a"])
+    try:
+        disparate_impact_metrics(y_true, y_pred, group_labels)
+        assert False, "expected ValueError for 3 groups"
+    except ValueError:
+        pass
+
+
+def test_compare_predictions_full_agreement():
+    y_true = np.array([0, 1, 0, 1])
+    proba_a = np.array([0.1, 0.9, 0.2, 0.8])
+    proba_b = np.array([0.05, 0.95, 0.15, 0.85])
+    result = compare_predictions(y_true, proba_a, proba_b)
+    assert result["hard_decision_agreement_rate"] == 1.0
+    assert result["accuracy_when_agree"] == 1.0
+    assert np.isnan(result["accuracy_when_disagree"])

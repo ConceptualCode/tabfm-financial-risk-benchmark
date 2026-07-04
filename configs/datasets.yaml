@@ -1,38 +1,53 @@
 # FinBench (yuweiyin/FinBench) task configs.
 # All tasks are binary classification (num_classes = 2), so TabFM's
 # 10-class ceiling is a non-issue for this benchmark.
+#
+# protected_attribute: column used for the fair-lending disparate-impact
+# audit (null where no clean binary protected attribute is available).
+# Confirmed "gender" is cleanly binary (female/male) in every config below
+# that lists it -- see fairness.py.
 
 datasets:
   - config: cd1
     risk_type: credit_default
     display_name: "Credit-card Default 1"
+    protected_attribute: gender
   - config: cd2
     risk_type: credit_default
     display_name: "Credit-card Default 2"
+    protected_attribute: gender
   - config: ld1
     risk_type: loan_default
     display_name: "Loan Default 1"
+    protected_attribute: null
   - config: ld2
     risk_type: loan_default
     display_name: "Loan Default 2"
+    protected_attribute: null
   - config: ld3
     risk_type: loan_default
     display_name: "Loan Default 3"
+    protected_attribute: null
   - config: cf1
     risk_type: credit_fraud
     display_name: "Credit-card Fraud 1"
+    protected_attribute: null
   - config: cf2
     risk_type: credit_fraud
     display_name: "Credit-card Fraud 2"
+    protected_attribute: gender
   - config: cc1
     risk_type: customer_churn
     display_name: "Customer Churn 1"
+    protected_attribute: gender
   - config: cc2
     risk_type: customer_churn
     display_name: "Customer Churn 2"
+    protected_attribute: gender
   - config: cc3
     risk_type: customer_churn
     display_name: "Customer Churn 3"
+    protected_attribute: gender
 
 models:
   - tabfm

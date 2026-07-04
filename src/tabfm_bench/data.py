@@ -60,14 +60,19 @@ def _raw_dataframe(
     array: categorical columns are still integer-coded even in the
     "unscale" file, so we map each code back to its real string label via
     stat_dict.json's cat_str (cat_str[i] lists the labels for cat_idx[i]).
+
+    Indexes by position (.iloc), not by column name -- at least one
+    FinBench config (cf2) has duplicate column names in its own
+    stat_dict.json (two different underlying Home Credit columns collapsed
+    to the same human-readable label), which breaks name-based lookups
+    with an ambiguous "Columns must be same length as key" error.
     """
     df = pd.DataFrame(X_unscale, columns=col_name)
     for pos, col_idx in enumerate(cat_idx):
         code_to_label = dict(enumerate(cat_str[pos]))
-        col = col_name[col_idx]
-        df[col] = df[col].astype(int).map(code_to_label)
-    num_cols = [col_name[i] for i in range(len(col_name)) if i not in cat_idx]
-    df[num_cols] = df[num_cols].astype(float)
+        df.iloc[:, col_idx] = df.iloc[:, col_idx].astype(int).map(code_to_label)
+    num_positions = [i for i in range(len(col_name)) if i not in cat_idx]
+    df.iloc[:, num_positions] = df.iloc[:, num_positions].astype(float)
     return df
 
 

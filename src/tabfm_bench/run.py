@@ -9,6 +9,7 @@ is already fit.
 
 from tabfm_bench.cost import measure_fit_and_predict
 from tabfm_bench.data import load_finbench
+from tabfm_bench.fairness import disparate_impact_metrics
 from tabfm_bench.metrics import compute_metrics, cost_weighted_score, find_optimal_threshold, reliability_curve
 from tabfm_bench.models import RAW_INPUT_MODELS, get_model
 
@@ -20,7 +21,7 @@ DEFAULT_COST_FALSE_NEGATIVE = 5.0
 DEFAULT_COST_FALSE_POSITIVE = 1.0
 
 
-def run_single(dataset_config: str, model_name: str) -> dict:
+def run_single(dataset_config: str, model_name: str, protected_attribute: str | None = None) -> dict:
     split = load_finbench(dataset_config)
     model = get_model(
         model_name, cat_idx=split.cat_idx, num_idx=split.num_idx, col_name=split.col_name
@@ -48,7 +49,7 @@ def run_single(dataset_config: str, model_name: str) -> dict:
         split.y_test, proba, 0.5, DEFAULT_COST_FALSE_NEGATIVE, DEFAULT_COST_FALSE_POSITIVE
     )
 
-    return {
+    result = {
         "dataset": dataset_config,
         "model": model_name,
         **metrics,
@@ -59,3 +60,14 @@ def run_single(dataset_config: str, model_name: str) -> dict:
         "calibration_predicted": predicted_bins.tolist(),
         "calibration_observed": observed_freqs.tolist(),
     }
+
+    if protected_attribute is not None:
+        # Evaluated at each model's own cost-minimizing threshold -- the
+        # threshold it would actually be deployed at, not an arbitrary 0.5.
+        y_pred_at_best = (proba >= best_threshold).astype(int)
+        group_labels = split.X_test_df[protected_attribute].to_numpy()
+        fairness = disparate_impact_metrics(split.y_test, y_pred_at_best, group_labels)
+        result["fairness_protected_attribute"] = protected_attribute
+        result.update({f"fairness_{k}": v for k, v in fairness.items()})
+
+    return result
