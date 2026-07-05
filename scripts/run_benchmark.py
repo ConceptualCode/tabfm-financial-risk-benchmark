@@ -26,13 +26,14 @@ import os
 from pathlib import Path
 
 import pandas as pd
+import torch
 import yaml
 from tqdm import tqdm
 
 from tabfm_bench.agreement import compare_predictions
 from tabfm_bench.data import load_finbench
 from tabfm_bench.explain import compare_shap_agreement, get_shap_values
-from tabfm_bench.models import RAW_INPUT_MODELS
+from tabfm_bench.models import RAW_INPUT_MODELS, get_model
 from tabfm_bench.run import run_single
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,6 +42,41 @@ RESULTS_DIR = Path(os.environ.get("TABFM_RESULTS_DIR", ROOT / "results"))
 RESULTS_JSONL = RESULTS_DIR / "results.jsonl"
 SHAP_JSONL = RESULTS_DIR / "shap_agreement.jsonl"
 AGREEMENT_JSONL = RESULTS_DIR / "prediction_agreement.jsonl"
+
+# The full-settings instances (TabFM's 32-member ensemble, SAP-RPT's
+# default bagging) are sized for accuracy, not for running SHAP's
+# KernelExplainer on top -- a single fitted TabFM instance already leaves
+# too little GPU headroom for KernelExplainer's repeated perturbation
+# passes (confirmed: CUDA OOM even after eliminating an earlier double-build
+# of the model), and SAP-RPT's SHAP step scales directly with bagging
+# (~59 min/dataset at bagging=2 on a free T4). For these two, we free the
+# full-settings instance and build a separate, smaller one just for SHAP --
+# the real metrics/cross-model-agreement numbers still come from the
+# full-settings model, computed before this swap.
+SHAP_REBUILD_MODELS = {"tabfm", "sap_rpt"}
+
+
+def _build_shap_model(model_name: str, split):
+    if model_name == "tabfm":
+        n_estimators = int(os.environ.get("TABFM_SHAP_N_ESTIMATORS", 4))
+        model = get_model(
+            model_name,
+            cat_idx=split.cat_idx,
+            num_idx=split.num_idx,
+            col_name=split.col_name,
+            n_estimators=n_estimators,
+        )
+    else:  # sap_rpt
+        bagging = int(os.environ.get("SAP_RPT_SHAP_BAGGING", 1))
+        model = get_model(
+            model_name,
+            cat_idx=split.cat_idx,
+            num_idx=split.num_idx,
+            col_name=split.col_name,
+            bagging=bagging,
+        )
+    model.fit(split.X_train_df, split.y_train)
+    return model
 
 
 def load_config():
@@ -166,9 +202,22 @@ def main():
                         X_train, X_test = split.X_train_df, split.X_test_df
                     else:
                         X_train, X_test = split.X_train, split.X_test
+
+                    # Cross-model agreement should reflect each model's
+                    # real (full-settings) predictions -- compute this
+                    # before any SHAP-specific rebuild below.
                     full_probas[model_name] = model.predict_proba(X_test)[:, 1]
+
+                    shap_model = model
+                    if model_name in SHAP_REBUILD_MODELS:
+                        del fitted_models[model_name]
+                        model = None
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                        shap_model = _build_shap_model(model_name, split)
+
                     shap_values[model_name] = get_shap_values(
-                        model, model_name, X_train, X_test[:50]
+                        shap_model, model_name, X_train, X_test[:50]
                     )
                 except Exception as e:
                     tqdm.write(

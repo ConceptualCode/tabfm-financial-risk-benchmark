@@ -194,7 +194,13 @@ MODEL_REGISTRY = {
 }
 
 
-def get_model(name: str, *, cat_idx=None, num_idx=None, col_name=None):
+def get_model(name: str, *, cat_idx=None, num_idx=None, col_name=None, **kwargs):
+    """**kwargs forwards model-specific overrides (e.g. n_estimators for
+    tabfm, bagging/max_context_size for sap_rpt) straight to the builder --
+    used by scripts/run_benchmark.py to request a smaller, cheaper instance
+    specifically for the SHAP step, separate from the full-settings
+    instance used for the real metrics.
+    """
     if name not in MODEL_REGISTRY:
         raise ValueError(f"Unknown model '{name}'. Options: {list(MODEL_REGISTRY)}")
-    return MODEL_REGISTRY[name](cat_idx=cat_idx, num_idx=num_idx, col_name=col_name)
+    return MODEL_REGISTRY[name](cat_idx=cat_idx, num_idx=num_idx, col_name=col_name, **kwargs)
