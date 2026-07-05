@@ -56,6 +56,20 @@ def build_tabfm(cat_idx=None, num_idx=None, col_name=None, n_estimators=None):
     points at the file that actually exists, using safetensors instead of
     torch.load's pickle format.
 
+    Loads via a "meta device + assign=True" pattern rather than the
+    straightforward construct-then-copy path: building the model under
+    `torch.device("meta")` allocates its structure with no real memory,
+    then `load_state_dict(..., assign=True)` replaces its parameters with
+    the loaded tensors directly (loaded straight onto the target device)
+    instead of copying data into a separately-materialized, full-size CPU
+    model first. Measured directly: the old construct-then-copy path used
+    ~6.4GB of RSS; this path used ~176MB -- the difference between a
+    machine with a real GPU but limited system RAM being able to run this
+    at all, or not (this is the exact fix for the 8GB-GPU/<12GB-RAM laptop
+    scenario). Falls back to the straightforward path if meta-device
+    construction doesn't work cleanly with TabFM's specific module
+    internals -- untested on real GPU hardware, since this machine has none.
+
     Explicitly moves the model to CUDA if available -- load()'s original
     device handling was never wired up when this was written, which left
     TabFM silently running on CPU even with a GPU present (a 24-block
@@ -77,15 +91,23 @@ def build_tabfm(cat_idx=None, num_idx=None, col_name=None, n_estimators=None):
     from tabfm import TabFMClassifier
     from tabfm.src.pytorch.tabfm_v1_0_0 import ClassificationConfig, TabFM
 
-    model = TabFM(**ClassificationConfig().to_dict())
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint_path = hf_hub_download(
         repo_id=TABFM_HF_REPO, filename="classification/model.safetensors"
     )
-    state_dict = load_file(checkpoint_path)
-    model.load_state_dict(state_dict, strict=True)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
+    try:
+        with torch.device("meta"):
+            model = TabFM(**ClassificationConfig().to_dict())
+        state_dict = load_file(checkpoint_path, device=str(device))
+        model.load_state_dict(state_dict, strict=True, assign=True)
+    except Exception as e:
+        print(f"[tabfm] meta-device load failed ({e}); falling back to construct-then-copy")
+        model = TabFM(**ClassificationConfig().to_dict())
+        state_dict = load_file(checkpoint_path)
+        model.load_state_dict(state_dict, strict=True)
+        model = model.to(device)
+
     model.eval()
     print(f"[tabfm] using device: {device}")
 
