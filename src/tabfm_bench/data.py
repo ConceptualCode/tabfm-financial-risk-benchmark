@@ -76,6 +76,14 @@ def _raw_dataframe(
         numeric features as strings ("dtype is object... converting to
         str"). Casting each column as an individual Series does properly
         change its dtype.
+
+    Categorical columns are cast to the classic `object` dtype explicitly,
+    not left at pandas's default. Pandas 3.0 changed the default dtype for
+    string-like data to a new native `str` dtype (PDEP-14) -- third-party
+    libraries written before that change (e.g. SAP-RPT) don't yet recognize
+    it and emit "Data type str not recognized! Defaulting to string", which
+    happens to fall back to the right treatment anyway, but forcing
+    `object` explicitly avoids relying on that fallback.
     """
     cat_labels = dict(zip(cat_idx, cat_str))
     columns = []
@@ -83,7 +91,7 @@ def _raw_dataframe(
         raw_col = X_unscale[:, i]
         if i in cat_labels:
             code_to_label = dict(enumerate(cat_labels[i]))
-            series = pd.Series(raw_col, name=name).astype(int).map(code_to_label)
+            series = pd.Series(raw_col, name=name).astype(int).map(code_to_label).astype(object)
         else:
             series = pd.Series(raw_col, name=name).astype(float)
         columns.append(series)

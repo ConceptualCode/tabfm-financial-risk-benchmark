@@ -7,6 +7,7 @@ shap
 datasets
 tabfm[pytorch]
 sap_rpt_oss @ git+https://github.com/SAP-samples/sap-rpt-1-oss
+safetensors
 torch
 matplotlib
 pyyaml

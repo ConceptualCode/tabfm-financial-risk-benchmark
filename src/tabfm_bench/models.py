@@ -40,10 +40,35 @@ RAW_INPUT_MODELS = {"tabfm", "sap_rpt"}
 SEED = 42
 
 
-def build_tabfm(cat_idx=None, num_idx=None, col_name=None):
-    from tabfm import TabFMClassifier, tabfm_v1_0_0_pytorch as tabfm_v1_0_0
+TABFM_HF_REPO = "google/tabfm-1.0.0-pytorch"
 
-    model = tabfm_v1_0_0.load(model_type="classification")
+
+def build_tabfm(cat_idx=None, num_idx=None, col_name=None):
+    """Loads TabFM by going straight to the real checkpoint file.
+
+    tabfm==1.0.0's own tabfm_v1_0_0.load() hardcodes looking for
+    "<model_type>/pytorch_model.bin" after a snapshot_download, but the
+    actual HF repo (google/tabfm-1.0.0-pytorch) only ships
+    "<model_type>/model.safetensors" -- confirmed against the HF Hub API's
+    file listing. Calling load() raises FileNotFoundError every time,
+    regardless of hardware. This replicates load()'s working logic (build
+    the model from ClassificationConfig, load a state dict, .eval()) but
+    points at the file that actually exists, using safetensors instead of
+    torch.load's pickle format.
+    """
+    from huggingface_hub import hf_hub_download
+    from safetensors.torch import load_file
+    from tabfm import TabFMClassifier
+    from tabfm.src.pytorch.tabfm_v1_0_0 import ClassificationConfig, TabFM
+
+    model = TabFM(**ClassificationConfig().to_dict())
+    checkpoint_path = hf_hub_download(
+        repo_id=TABFM_HF_REPO, filename="classification/model.safetensors"
+    )
+    state_dict = load_file(checkpoint_path)
+    model.load_state_dict(state_dict, strict=True)
+    model.eval()
+
     return TabFMClassifier(model=model)
 
 
