@@ -55,7 +55,15 @@ def build_tabfm(cat_idx=None, num_idx=None, col_name=None):
     the model from ClassificationConfig, load a state dict, .eval()) but
     points at the file that actually exists, using safetensors instead of
     torch.load's pickle format.
+
+    Explicitly moves the model to CUDA if available -- load()'s original
+    device handling was never wired up when this was written, which left
+    TabFM silently running on CPU even with a GPU present (a 24-block
+    transformer forward pass over the training context on CPU took ~19
+    minutes on a single small dataset in testing; SAP-RPT, by contrast,
+    auto-detects and uses CUDA internally, so it wasn't the bottleneck).
     """
+    import torch
     from huggingface_hub import hf_hub_download
     from safetensors.torch import load_file
     from tabfm import TabFMClassifier
@@ -67,7 +75,11 @@ def build_tabfm(cat_idx=None, num_idx=None, col_name=None):
     )
     state_dict = load_file(checkpoint_path)
     model.load_state_dict(state_dict, strict=True)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
     model.eval()
+    print(f"[tabfm] using device: {device}")
 
     return TabFMClassifier(model=model)
 
@@ -100,7 +112,9 @@ def build_sap_rpt(
     if max_context_size is None:
         max_context_size = int(os.environ.get("SAP_RPT_MAX_CONTEXT_SIZE", 8192))
 
-    return SAP_RPT_OSS_Classifier(bagging=bagging, max_context_size=max_context_size)
+    classifier = SAP_RPT_OSS_Classifier(bagging=bagging, max_context_size=max_context_size)
+    print(f"[sap_rpt] using device: {classifier.device}")
+    return classifier
 
 
 def build_xgboost(cat_idx=None, num_idx=None, col_name=None):
