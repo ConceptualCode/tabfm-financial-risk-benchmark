@@ -63,8 +63,9 @@ rather than assumed:
 
 **What's still a genuinely distinctive combination:** both foundation
 models together (not one), on FinBench specifically, plus the licensing
-finding above, plus RQ5/RQ6 below (fairness and cross-model agreement),
-neither of which turned up in this search.
+finding above, plus RQ5-8 below (fairness, the preprocessing-honesty
+finding, missing-data robustness, and dataset-size sensitivity), none of
+which turned up in this search.
 
 ## Primary Objective
 
@@ -151,6 +152,20 @@ crippled ensemble size. This needs full, unconstrained runs to answer
 properly rather than more workarounds on limited hardware. See "Future
 Work" below.
 
+**SHAP (SHapley Additive exPlanations), concretely:** explains an individual
+prediction by quantifying how much each input feature pushed that specific
+prediction up or down. Built on Shapley values (cooperative game theory):
+imagine features as "players" joining the prediction one at a time, in every
+possible order, and measure each feature's average marginal contribution
+across all orderings. The result is a signed number per feature per
+prediction (e.g., "income: +0.12, missed payment history: +0.30") that sums
+exactly to the gap between the model's prediction and its baseline average.
+It's the standard explainability tool in regulated finance because laws like
+the US Equal Credit Opportunity Act require lenders to give applicants a
+specific reason for a denial — SHAP is what generates that reason from an
+otherwise black-box model. Whether it transfers cleanly to TabFM is directly
+relevant to real-world adoption.
+
 ### 5. Do TabFM and SAP-RPT encode different bias patterns than a GBM trained on your own data?
 
 TabFM is trained on synthetic SCM-generated data; SAP-RPT is trained on
@@ -167,37 +182,64 @@ verified binary in 6 of the 10 configs). Directly relevant to the SHAP/ECOA
 framing already established in RQ4 -- a model can be technically explainable
 and still produce disparate outcomes.
 
-### 6. Do TabFM and SAP-RPT actually agree with each other, or just have similar aggregate accuracy?
+### 6. Is the "zero preprocessing needed" pitch actually true in practice?
 
-Two models can report near-identical AUC while disagreeing on individual
-applicants -- a real production risk that no existing benchmark surfaces,
-since each evaluates one foundation model against GBMs rather than comparing
-foundation models against each other. Measured via prediction correlation,
-hard-decision agreement rate, and -- the more useful production signal --
-whether accuracy is higher on the subset where both models agree (a
-candidate operational rule: auto-decide when models agree, route
-disagreements to human review).
+Both models are marketed on skipping manual feature engineering — just feed
+raw data, no one-hot encoding or scaling required. Building this benchmark
+surfaced real, concrete counter-evidence, not a theoretical objection:
+`cf2`'s own metadata had duplicate column names that broke naive DataFrame
+reconstruction; numeric columns silently lost their dtype not once but
+*twice* in the pipeline (once in our own raw-DataFrame reconstruction, again
+inside `shap.KernelExplainer` itself); SAP-RPT's own tokenizer threw dtype
+warnings on data that had already been carefully, correctly typed. None of
+these are exotic edge cases — they're exactly the kind of friction any team
+would hit trying to actually implement "raw input" the way the model cards
+describe it.
 
-**SHAP (SHapley Additive exPlanations), concretely:** explains an individual
-prediction by quantifying how much each input feature pushed that specific
-prediction up or down. Built on Shapley values (cooperative game theory):
-imagine features as "players" joining the prediction one at a time, in every
-possible order, and measure each feature's average marginal contribution
-across all orderings. The result is a signed number per feature per
-prediction (e.g., "income: +0.12, missed payment history: +0.30") that sums
-exactly to the gap between the model's prediction and its baseline average.
-It's the standard explainability tool in regulated finance because laws like
-the US Equal Credit Opportunity Act require lenders to give applicants a
-specific reason for a denial — SHAP is what generates that reason from an
-otherwise black-box model. Whether it transfers cleanly to TabFM is directly
-relevant to real-world adoption.
+**The finding:** "no manual feature engineering" is a real and valuable
+claim (you genuinely don't need to hand-encode categoricals or scale
+numerics) — but it is not the same claim as "no engineering effort."
+Correctly serving these models well-typed raw data required real,
+non-obvious debugging work that a team adopting either model would have to
+rediscover for themselves, since it isn't mentioned in either model's
+documentation.
+
+### 7. How gracefully does each model handle incomplete data at prediction time?
+
+Real applicants and transactions in production often have incomplete
+profiles — a field wasn't collected, a system didn't report a value in
+time. TabFM and SAP-RPT both advertise automatic handling of missing data
+as a built-in feature; XGBoost and LightGBM also handle missing values
+natively via learned split directions. Tested by progressively masking an
+increasing fraction of *test-time* features (5%, 20%, 50%) to missing while
+keeping training data intact — simulating a real scenario where a subset of
+applicants show up with incomplete data at scoring time, not a data-quality
+problem baked into training. A model that degrades gracefully under
+increasing missingness is more production-ready than one that falls apart
+the moment a field is absent, regardless of how good its clean-data
+accuracy looks.
+
+### 8. Does the zero-shot "advantage" shrink as dataset size grows?
+
+FinBench's 10 datasets vary meaningfully in size (row counts from ~2,700 to
+5,400+, feature counts from 9 to 120). Zero-shot in-context learning models
+are commonly assumed to have an edge on small datasets, where gradient-
+boosted trees have less data to learn stable splits from — and TabFM's own
+model card notes "memory scales with training row count" as a real
+constraint. Correlating each model's relative performance (against the best
+baseline) with each dataset's size, once the full 10-dataset run is
+complete, tests whether that assumed advantage is real, and whether it
+shrinks or reverses as datasets grow. Needs no new infrastructure — it's a
+post-hoc analysis of results already being collected for RQ1.
 
 ### Why this set as a whole
 
 Questions 1-3 establish rigorous, unbiased evaluation — the baseline
-expectation for any ML role. Questions 4-6 are what make the project
+expectation for any ML role. Questions 4-8 are what make the project
 memorable rather than merely competent — each pushes past what the existing
-literature (see Related Work) has already covered on these two models.
+literature (see Related Work) has already covered on these two models, and
+several (6, 7) come directly from friction hit while actually building this,
+not from a planned experiment design.
 
 ## Scope — In
 
@@ -214,11 +256,13 @@ literature (see Related Work) has already covered on these two models.
   curves, cost-weighted score with an actual threshold sweep to find the
   cost-minimizing operating point (not just a fixed 0.5 cutoff), inference
   latency/memory
-- Explainability comparison (SHAP feasibility + agreement across models)
+- Explainability comparison (SHAP feasibility across models)
 - Fair-lending audit (disparate impact ratio, equalized-odds gap) on the 6
   FinBench configs with a clean binary protected attribute
-- Cross-model prediction agreement (not just aggregate accuracy) between
-  TabFM and SAP-RPT specifically
+- Missing-data robustness: performance degradation as an increasing fraction
+  of test-time features are masked (5%/20%/50%)
+- Dataset-size sensitivity: post-hoc correlation of relative performance
+  against each dataset's size (no new infrastructure needed)
 - Deliverables: public GitHub repo (clean, reusable eval harness), written
   narrative/production recommendation, small interactive demo
 

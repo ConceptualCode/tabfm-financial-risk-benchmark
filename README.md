@@ -55,14 +55,18 @@ python scripts/run_benchmark.py
 
 # a quick subset
 python scripts/run_benchmark.py --datasets cd1 ld1 --models tabfm sap_rpt xgboost --skip-shap
+
+# missing-data robustness sweep (RQ7): degrades test-time features to 0/5/20/50% missing
+python scripts/run_robustness.py
 ```
 
 Results are written to `results/results.csv` (predictive metrics,
 calibration points, fit/inference cost, cost-minimizing threshold, and
 fairness metrics where applicable), `results/shap_agreement.csv`
-(cross-model explainability agreement), and `results/prediction_agreement.csv`
+(cross-model explainability agreement), `results/prediction_agreement.csv`
 (cross-model prediction agreement -- do models with similar accuracy
-actually agree on individual applicants?).
+actually agree on individual applicants?), and `results/robustness.csv`
+(performance at increasing test-time missing-data rates).
 
 ## Project layout
 
@@ -76,7 +80,9 @@ src/tabfm_bench/
   explain.py                 SHAP wrapper + cross-model SHAP agreement
   fairness.py                disparate impact ratio + equalized-odds gap
   agreement.py                cross-model prediction agreement
+  robustness.py               missing-data injection for the RQ7 degradation test
   run.py                     runs one (dataset, model) pair end to end
 scripts/run_benchmark.py   CLI: runs the full grid, writes results/
+scripts/run_robustness.py  CLI: missing-data robustness sweep, writes results/robustness.csv
 tests/                     smoke tests (no network/heavy deps required)
 ```

@@ -31,8 +31,9 @@ production/compliance concern, not just an engineering nuisance.
 import os
 
 from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import make_pipeline
+from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 RAW_INPUT_MODELS = {"tabfm", "sap_rpt"}
@@ -196,12 +197,32 @@ def build_lightgbm(cat_idx=None, num_idx=None, col_name=None):
 
 
 def build_logreg(cat_idx=None, num_idx=None, col_name=None):
+    """Imputes before encoding/scaling -- FinBench itself has zero missing
+    values, so this is a no-op in the normal benchmark run, but it's what
+    lets logreg participate at all in the missing-data robustness test
+    (RQ7), where test-time features are deliberately masked. Without this,
+    OneHotEncoder/StandardScaler would error or silently propagate NaN on
+    masked input; XGBoost/LightGBM/TabFM/SAP-RPT all handle missing values
+    natively already, so only logreg needed this addition.
+    """
     cat_idx = cat_idx or []
     num_idx = num_idx or []
+    cat_pipeline = Pipeline(
+        [
+            ("impute", SimpleImputer(strategy="most_frequent")),
+            ("encode", OneHotEncoder(handle_unknown="ignore")),
+        ]
+    )
+    num_pipeline = Pipeline(
+        [
+            ("impute", SimpleImputer(strategy="mean")),
+            ("scale", StandardScaler()),
+        ]
+    )
     preprocessor = ColumnTransformer(
         [
-            ("cat", OneHotEncoder(handle_unknown="ignore"), cat_idx),
-            ("num", StandardScaler(), num_idx),
+            ("cat", cat_pipeline, cat_idx),
+            ("num", num_pipeline, num_idx),
         ]
     )
     return make_pipeline(preprocessor, LogisticRegression(max_iter=1000, random_state=SEED))
