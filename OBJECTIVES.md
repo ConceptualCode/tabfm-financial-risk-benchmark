@@ -130,10 +130,26 @@ Explainability tooling was built assuming tree-based or simple parametric
 models; in-context-learning transformers are a very different computational
 object, and it's an open question whether SHAP's assumptions (feature
 independence approximations, background datasets, etc.) transfer cleanly to
-either of them. Others have raised this concern about TabFM in general terms
-(see Related Work above); running the actual SHAP comparison on both models
-on FinBench specifically, and reporting whether attributions are stable or
-misleading, turns commentary into a concrete, citable result.
+either of them.
+
+**Answer for this article, established through direct experience rather
+than a planned experiment:** SHAP is either infeasible or prohibitively
+expensive on realistic hardware for both models. TabFM's SHAP step OOMs
+even at the minimum ensemble size (`n_estimators=1`) on an 8GB GPU, and only
+survives on a 16GB T4 after shrinking the ensemble 8x (32 -> 4). SAP-RPT's
+SHAP technically completes but costs ~45-71 minutes per dataset, versus
+seconds for the GBMs. In practice this collapsed into a cost finding
+overlapping with RQ3 -- "does it run at all, and at what price" -- rather
+than the deeper question below.
+
+**Deferred to a follow-up phase, after this article is published, once
+there's budget for real GPU time (e.g. Colab Pro+/A100):** whether the
+explanations SAP-RPT's SHAP *does* produce are actually stable and
+trustworthy, or noisy/arbitrary compared to a GBM's -- and whether TabFM's
+SHAP can be evaluated at all with proper hardware headroom instead of a
+crippled ensemble size. This needs full, unconstrained runs to answer
+properly rather than more workarounds on limited hardware. See "Future
+Work" below.
 
 ### 5. Do TabFM and SAP-RPT encode different bias patterns than a GBM trained on your own data?
 
@@ -224,6 +240,23 @@ literature (see Related Work) has already covered on these two models.
 - No determinism/consistency check on repeated foundation-model calls
   (relevant given SAP-RPT's bagging) — a real production/fair-lending
   question, deferred to a later pass.
+
+## Future Work (planned follow-up, not part of this article)
+
+Unlike "Scope — Out" above (things deliberately not pursued), this is work
+that's genuinely planned, just sequenced after the current deliverable and
+gated on investing in paid GPU time (e.g. Colab Pro+/A100) rather than
+fighting free-tier hardware limits:
+
+- **RQ4 deep dive**: whether SAP-RPT's SHAP explanations are actually
+  stable/trustworthy (not just "did it finish running"), and evaluating
+  TabFM's SHAP at a real ensemble size instead of a crippled one. Needs
+  unconstrained GPU headroom to do properly.
+- Repeated-run/bootstrap confidence intervals (currently deferred, see
+  Scope — Out) would benefit from the same GPU-budget investment, since
+  each foundation-model rerun is expensive.
+- Determinism/consistency check on repeated foundation-model calls
+  (currently deferred, see Scope — Out) — same reasoning.
 
 ## Definition of Done
 
