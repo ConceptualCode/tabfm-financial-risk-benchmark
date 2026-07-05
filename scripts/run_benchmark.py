@@ -32,7 +32,7 @@ from tqdm import tqdm
 from tabfm_bench.agreement import compare_predictions
 from tabfm_bench.data import load_finbench
 from tabfm_bench.explain import compare_shap_agreement, get_shap_values
-from tabfm_bench.models import RAW_INPUT_MODELS, get_model
+from tabfm_bench.models import RAW_INPUT_MODELS
 from tabfm_bench.run import run_single
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -135,11 +135,25 @@ def main():
 
         for model_name in tqdm(args.models, desc=dataset_config, leave=False):
             try:
-                result = run_single(
-                    dataset_config,
-                    model_name,
-                    protected_attribute=protected_attrs.get(dataset_config),
-                )
+                if args.skip_shap:
+                    result = run_single(
+                        dataset_config,
+                        model_name,
+                        protected_attribute=protected_attrs.get(dataset_config),
+                    )
+                else:
+                    # Reuse the model run_single already built and fit,
+                    # rather than building/fitting a second, independent
+                    # instance for SHAP -- for TabFM specifically, two
+                    # ~6.5GB+ instances (each with 32-member ensemble
+                    # overhead) resident on GPU at once caused a real CUDA
+                    # OOM, not just wasted time.
+                    result, fitted_models[model_name] = run_single(
+                        dataset_config,
+                        model_name,
+                        protected_attribute=protected_attrs.get(dataset_config),
+                        return_model=True,
+                    )
                 _append_jsonl(RESULTS_JSONL, result)
             except Exception as e:
                 tqdm.write(f"FAILED: {dataset_config}/{model_name} -- {type(e).__name__}: {e}")
@@ -147,18 +161,11 @@ def main():
 
             if not args.skip_shap:
                 try:
-                    model = get_model(
-                        model_name,
-                        cat_idx=split.cat_idx,
-                        num_idx=split.num_idx,
-                        col_name=split.col_name,
-                    )
+                    model = fitted_models[model_name]
                     if model_name in RAW_INPUT_MODELS:
                         X_train, X_test = split.X_train_df, split.X_test_df
                     else:
                         X_train, X_test = split.X_train, split.X_test
-                    model.fit(X_train, split.y_train)
-                    fitted_models[model_name] = model
                     full_probas[model_name] = model.predict_proba(X_test)[:, 1]
                     shap_values[model_name] = get_shap_values(
                         model, model_name, X_train, X_test[:50]

@@ -21,7 +21,21 @@ DEFAULT_COST_FALSE_NEGATIVE = 5.0
 DEFAULT_COST_FALSE_POSITIVE = 1.0
 
 
-def run_single(dataset_config: str, model_name: str, protected_attribute: str | None = None) -> dict:
+def run_single(
+    dataset_config: str,
+    model_name: str,
+    protected_attribute: str | None = None,
+    return_model: bool = False,
+):
+    """Set return_model=True to get back the already-fitted model alongside
+    the result dict, so callers needing the model afterward (e.g. SHAP in
+    scripts/run_benchmark.py) can reuse it instead of building and fitting a
+    second, independent instance. That "build twice" pattern used to be the
+    default -- for TabFM specifically, two ~6.5GB+ instances (each with
+    32-member ensemble overhead) resident on GPU at once caused a genuine
+    CUDA OOM ("Tried to allocate 1.85 GiB... 1.84 GiB is free") during a
+    real run, not just wasted time.
+    """
     split = load_finbench(dataset_config)
     model = get_model(
         model_name, cat_idx=split.cat_idx, num_idx=split.num_idx, col_name=split.col_name
@@ -70,4 +84,6 @@ def run_single(dataset_config: str, model_name: str, protected_attribute: str | 
         result["fairness_protected_attribute"] = protected_attribute
         result.update({f"fairness_{k}": v for k, v in fairness.items()})
 
+    if return_model:
+        return result, model
     return result
