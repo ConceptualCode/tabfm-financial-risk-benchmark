@@ -1,10 +1,13 @@
-pandas
+# <3.0: pandas 3.0 changed the default string dtype (PDEP-14), which
+# libraries like sap_rpt_oss don't yet recognize; >=2.2.3: floor required
+# by sap_rpt_oss itself. Also matches what Colab's own preinstalled
+# google-colab/cudf-cu12 packages expect, avoiding pip dependency conflicts.
+pandas>=2.2.3,<3.0
 numpy
 scikit-learn
 xgboost
 lightgbm
 shap
-datasets
 tabfm[pytorch]
 sap_rpt_oss @ git+https://github.com/SAP-samples/sap-rpt-1-oss
 safetensors
