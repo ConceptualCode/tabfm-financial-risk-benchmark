@@ -43,7 +43,7 @@ SEED = 42
 TABFM_HF_REPO = "google/tabfm-1.0.0-pytorch"
 
 
-def build_tabfm(cat_idx=None, num_idx=None, col_name=None):
+def build_tabfm(cat_idx=None, num_idx=None, col_name=None, n_estimators=None):
     """Loads TabFM by going straight to the real checkpoint file.
 
     tabfm==1.0.0's own tabfm_v1_0_0.load() hardcodes looking for
@@ -62,6 +62,14 @@ def build_tabfm(cat_idx=None, num_idx=None, col_name=None):
     transformer forward pass over the training context on CPU took ~19
     minutes on a single small dataset in testing; SAP-RPT, by contrast,
     auto-detects and uses CUDA internally, so it wasn't the bottleneck).
+
+    n_estimators defaults to TabFMClassifier's own default (32) -- every
+    prediction runs that many ensemble members through the model, not one,
+    which is what actually dominates TabFM's ~4 minute-per-dataset cost on
+    a T4 GPU (the one-time 6.5GB checkpoint download is separate and only
+    happens once per session). Overridable via TABFM_N_ESTIMATORS for
+    faster validation runs, at the cost of ensemble robustness -- the same
+    tradeoff SAP_RPT_BAGGING already exposes for SAP-RPT.
     """
     import torch
     from huggingface_hub import hf_hub_download
@@ -81,7 +89,10 @@ def build_tabfm(cat_idx=None, num_idx=None, col_name=None):
     model.eval()
     print(f"[tabfm] using device: {device}")
 
-    return TabFMClassifier(model=model)
+    if n_estimators is None:
+        n_estimators = int(os.environ.get("TABFM_N_ESTIMATORS", 32))
+
+    return TabFMClassifier(model=model, n_estimators=n_estimators)
 
 
 def build_sap_rpt(

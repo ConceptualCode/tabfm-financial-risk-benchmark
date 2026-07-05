@@ -60,12 +60,27 @@ def _read_jsonl(path: Path) -> list:
         return [json.loads(line) for line in f if line.strip()]
 
 
-def _export_csv(jsonl_path: Path, csv_path: Path):
+def _export_csv(jsonl_path: Path, csv_path: Path, dedup_keys: list = None):
+    """Regenerates a CSV from a jsonl file. Rerunning the same (dataset,
+    model) pair without --fresh appends a new row rather than replacing the
+    old one -- dedup_keys keeps only the most recent row per key group
+    (e.g. ["dataset", "model"]), on the assumption a later attempt
+    supersedes an earlier one (a code fix, a different setting, etc.).
+    """
     rows = _read_jsonl(jsonl_path)
     if not rows:
         return
-    pd.json_normalize(rows).to_csv(csv_path, index=False)
-    print(f"Wrote {len(rows)} rows to {csv_path}")
+    df = pd.json_normalize(rows)
+    if dedup_keys:
+        before = len(df)
+        df = df.drop_duplicates(subset=dedup_keys, keep="last")
+        if len(df) != before:
+            print(
+                f"{csv_path.name}: deduplicated {before} -> {len(df)} rows "
+                f"(kept the latest attempt per {dedup_keys})"
+            )
+    df.to_csv(csv_path, index=False)
+    print(f"Wrote {len(df)} rows to {csv_path}")
 
 
 def main():
@@ -95,9 +110,17 @@ def main():
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     if args.export_only:
-        _export_csv(RESULTS_JSONL, RESULTS_DIR / "results.csv")
-        _export_csv(SHAP_JSONL, RESULTS_DIR / "shap_agreement.csv")
-        _export_csv(AGREEMENT_JSONL, RESULTS_DIR / "prediction_agreement.csv")
+        _export_csv(RESULTS_JSONL, RESULTS_DIR / "results.csv", dedup_keys=["dataset", "model"])
+        _export_csv(
+            SHAP_JSONL,
+            RESULTS_DIR / "shap_agreement.csv",
+            dedup_keys=["dataset", "model_a", "model_b"],
+        )
+        _export_csv(
+            AGREEMENT_JSONL,
+            RESULTS_DIR / "prediction_agreement.csv",
+            dedup_keys=["dataset", "model_a", "model_b"],
+        )
         return
 
     if args.fresh:
@@ -169,9 +192,17 @@ def main():
                     }
                     _append_jsonl(AGREEMENT_JSONL, agreement_row)
 
-    _export_csv(RESULTS_JSONL, RESULTS_DIR / "results.csv")
-    _export_csv(SHAP_JSONL, RESULTS_DIR / "shap_agreement.csv")
-    _export_csv(AGREEMENT_JSONL, RESULTS_DIR / "prediction_agreement.csv")
+    _export_csv(RESULTS_JSONL, RESULTS_DIR / "results.csv", dedup_keys=["dataset", "model"])
+    _export_csv(
+        SHAP_JSONL,
+        RESULTS_DIR / "shap_agreement.csv",
+        dedup_keys=["dataset", "model_a", "model_b"],
+    )
+    _export_csv(
+        AGREEMENT_JSONL,
+        RESULTS_DIR / "prediction_agreement.csv",
+        dedup_keys=["dataset", "model_a", "model_b"],
+    )
 
 
 if __name__ == "__main__":
