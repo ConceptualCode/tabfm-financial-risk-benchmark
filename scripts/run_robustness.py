@@ -117,7 +117,26 @@ def main():
                         f"PREDICT FAILED: {dataset_config}/{model_name}@{missing_rate} "
                         f"-- {type(e).__name__}: {e}"
                     )
-                    continue
+                finally:
+                    # Calling predict_proba 4x in a row on the same TabFM/
+                    # SAP-RPT instance (once per missing rate) was observed
+                    # to accumulate GPU memory across calls rather than
+                    # releasing it -- free bytes dropped from run to run on
+                    # the *same* fitted model (e.g. 1.57 GiB -> 981 MiB free
+                    # between two calls on cd2), causing OOMs on datasets
+                    # that would have been fine for a single prediction
+                    # (ld2, only 11 columns, failed here despite cd1's 9
+                    # columns succeeding in the main benchmark's single-call
+                    # path). Releasing cached memory after every call
+                    # prevents that accumulation.
+                    if model_name in RAW_INPUT_MODELS:
+                        try:
+                            import torch
+
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+                        except ImportError:
+                            pass
 
     rows = _read_jsonl(ROBUSTNESS_JSONL)
     if rows:
