@@ -10,12 +10,17 @@ Usage:
 """
 
 import argparse
+import os
 from pathlib import Path
 
 import pandas as pd
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+# Same TABFM_RESULTS_DIR override as run_benchmark.py/run_robustness.py --
+# defaults to the local results/ dir, but respects a Drive-mounted path if
+# that's where the actual run wrote its output.
+RESULTS_DIR = Path(os.environ.get("TABFM_RESULTS_DIR", ROOT / "results"))
 DEFAULT_MISSING_RATES = [0.0, 0.05, 0.2, 0.5]
 
 
@@ -37,7 +42,7 @@ def main():
     )
     parser.add_argument(
         "--csv",
-        default=str(ROOT / "results" / "robustness.csv"),
+        default=str(RESULTS_DIR / "robustness.csv"),
         help="Path to the robustness results CSV to check.",
     )
     args = parser.parse_args()

@@ -16,6 +16,7 @@ Usage:
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -28,7 +29,11 @@ from tabfm_bench.models import RAW_INPUT_MODELS, get_model
 from tabfm_bench.robustness import inject_missingness
 
 ROOT = Path(__file__).resolve().parents[1]
-RESULTS_DIR = ROOT / "results"
+# Same TABFM_RESULTS_DIR override as run_benchmark.py -- e.g. a Google
+# Drive-mounted path in Colab, so this survives a session disconnect too.
+# Missing this was a real bug: a completed 3-hour robustness run landed
+# only on the Colab VM's ephemeral local disk and was lost on restart.
+RESULTS_DIR = Path(os.environ.get("TABFM_RESULTS_DIR", ROOT / "results"))
 ROBUSTNESS_JSONL = RESULTS_DIR / "robustness.jsonl"
 
 DEFAULT_MISSING_RATES = [0.0, 0.05, 0.2, 0.5]
