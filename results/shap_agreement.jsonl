@@ -1,0 +1,6 @@
+{"dataset": "cd1", "model_a": "sap_rpt", "model_b": "xgboost", "shap_rank_agreement": 0.7506666666666666}
+{"dataset": "cd1", "model_a": "sap_rpt", "model_b": "lightgbm", "shap_rank_agreement": 0.6119999999999999}
+{"dataset": "cd1", "model_a": "sap_rpt", "model_b": "logreg", "shap_rank_agreement": 0.8986666666666667}
+{"dataset": "cd1", "model_a": "xgboost", "model_b": "lightgbm", "shap_rank_agreement": 0.7576666666666668}
+{"dataset": "cd1", "model_a": "xgboost", "model_b": "logreg", "shap_rank_agreement": 0.7473333333333332}
+{"dataset": "cd1", "model_a": "lightgbm", "model_b": "logreg", "shap_rank_agreement": 0.6080000000000001}

@@ -3,11 +3,6 @@ __pycache__/
 .venv/
 venv/
 .env
-results/*.json
-results/*.jsonl
-results/*.csv
-results/*.png
-!results/.gitkeep
 .pytest_cache/
 .ipynb_checkpoints/
 *.egg-info/
