@@ -4,6 +4,7 @@
 # google-colab/cudf-cu12 packages expect, avoiding pip dependency conflicts.
 pandas>=2.2.3,<3.0
 numpy
+scipy
 scikit-learn
 xgboost
 lightgbm
@@ -12,8 +13,8 @@ tabfm[pytorch]
 sap_rpt_oss @ git+https://github.com/SAP-samples/sap-rpt-1-oss
 safetensors
 torch
+huggingface_hub
 matplotlib
 pyyaml
 tqdm
-psutil
 pytest

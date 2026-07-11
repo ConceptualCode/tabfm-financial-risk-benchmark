@@ -58,6 +58,40 @@ python scripts/run_benchmark.py --datasets cd1 ld1 --models tabfm sap_rpt xgboos
 
 # missing-data robustness sweep (RQ7): degrades test-time features to 0/5/20/50% missing
 python scripts/run_robustness.py
+
+# verify a robustness.csv run actually covers the full expected (dataset, model, missing_rate) grid
+python scripts/check_robustness_coverage.py
+```
+
+### Real hyperparameter search for the classical baselines
+
+`run_benchmark.py`/`run_robustness.py` run XGBoost, LightGBM, and logistic
+regression at a single fixed config. `tune_classical.py` replaces that with
+a genuine per-dataset random search (uses the FinBench validation split,
+already loaded by `data.py` but otherwise unused), then re-evaluates on the
+held-out test set. CPU only, no GPU needed.
+
+```bash
+# hyperparameter search + re-evaluation for XGBoost/LightGBM/logreg, all 10 datasets
+python scripts/tune_classical.py
+
+# a quick subset, fewer trials
+python scripts/tune_classical.py --datasets cd1 ld1 --models xgboost --n-trials 10
+
+# re-run the missingness robustness sweep using the tuned configs above
+python scripts/run_robustness_tuned.py
+```
+
+Writes to `results/results_tuned.csv`, `results/tuned_best_params.csv`
+(the winning hyperparameters found per dataset/model), and
+`results/robustness_tuned.csv` — new files, none of the original
+`results/*.csv` are overwritten.
+
+### Regenerating figures
+
+```bash
+python scripts/generate_paper_figures.py              # original 5-model figure set
+python scripts/generate_article_figures_tabfm_only.py  # TabFM vs. tuned-classical figure set
 ```
 
 Results are written to `results/results.csv` (predictive metrics,
@@ -82,7 +116,12 @@ src/tabfm_bench/
   agreement.py                cross-model prediction agreement
   robustness.py               missing-data injection for the RQ7 degradation test
   run.py                     runs one (dataset, model) pair end to end
-scripts/run_benchmark.py   CLI: runs the full grid, writes results/
-scripts/run_robustness.py  CLI: missing-data robustness sweep, writes results/robustness.csv
+scripts/run_benchmark.py             CLI: runs the full grid, writes results/
+scripts/run_robustness.py            CLI: missing-data robustness sweep, writes results/robustness.csv
+scripts/check_robustness_coverage.py CLI: verifies a robustness.csv run covers the full expected grid
+scripts/tune_classical.py            CLI: real per-dataset hyperparameter search for XGBoost/LightGBM/logreg
+scripts/run_robustness_tuned.py      CLI: robustness sweep using tune_classical.py's tuned configs
+scripts/generate_paper_figures.py              regenerates the original 5-model figure set
+scripts/generate_article_figures_tabfm_only.py regenerates the TabFM-vs-tuned-classical figure set
 tests/                     smoke tests (no network/heavy deps required)
 ```
