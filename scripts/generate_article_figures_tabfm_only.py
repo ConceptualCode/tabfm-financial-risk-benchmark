@@ -1,7 +1,7 @@
-"""Generates TabFM-only variants of the 4 figures embedded in ARTICLE_V2.md,
-for the version of the article that removes SAP-RPT entirely. Reuses the same
-palette/style as generate_article_figures.py so the two figure sets are
-visually consistent, just with the sap_rpt series dropped from MODEL_ORDER.
+"""Generates the 4 TabFM-only figures embedded in ARTICLE_V2.md, for the
+version of the article that removes SAP-RPT entirely. Reuses the same
+palette/style as generate_paper_figures.py so all figures across both
+documents stay visually consistent.
 
 Classical-model (XGBoost/LightGBM/logreg) data comes from results_tuned.csv /
 robustness_tuned.csv (tune_classical.py's real per-dataset hyperparameter
