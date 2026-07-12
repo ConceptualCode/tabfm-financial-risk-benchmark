@@ -13,7 +13,7 @@ Usage:
 """
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyBboxPatch
+from matplotlib.patches import FancyBboxPatch, Rectangle
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +24,7 @@ SURFACE = "#fcfcfb"
 INK = "#0b0b0b"
 SECONDARY = "#52514e"
 MUTED = "#898781"
+ACCENT = "#2a78d6"  # TabFM's series color elsewhere in the article's figures
 
 STATUS = {
     "good": "#0ca30c",
@@ -58,37 +59,55 @@ def main():
     ax.axis("off")
     ax.set_facecolor(SURFACE)
 
-    # Title block
-    ax.text(0.06, 0.90, "Google's TabFM vs.\nTuned Classical ML Models",
-             fontsize=30, fontweight="bold", color=INK, va="top", ha="left",
-             linespacing=1.25)
-    ax.text(0.06, 0.58, "A Production-Readiness Evaluation on\n10 Financial Risk Datasets",
-             fontsize=15, color=SECONDARY, va="top", ha="left", linespacing=1.4)
+    # Left accent bar, ties the banner to the article's own figure palette
+    ax.add_patch(Rectangle((0, 0), 0.012, 1, transform=ax.transAxes,
+                            facecolor=ACCENT, linewidth=0, zorder=4))
 
-    # Scorecard row
+    left_margin = 0.075
+
+    # Title block
+    ax.text(left_margin, 0.86, "Google's TabFM vs.\nTuned Classical ML Models",
+             fontsize=33, fontweight="bold", color=INK, va="top", ha="left",
+             linespacing=1.22)
+    ax.text(left_margin, 0.52, "A Production-Readiness Evaluation on\n10 Financial Risk Datasets",
+             fontsize=15.5, color=SECONDARY, va="top", ha="left", linespacing=1.4)
+
+    # Divider rule between title block and scorecard
+    ax.add_patch(Rectangle((left_margin, 0.365), 0.97 - left_margin, 0.0035,
+                            transform=ax.transAxes, facecolor="#e1e0d9",
+                            linewidth=0, zorder=2))
+
+    ax.text(left_margin, 0.325, "WHERE IT WINS, AND WHERE IT DOESN'T",
+             fontsize=10.5, color=MUTED, va="top", ha="left", fontweight="bold")
+
+    # Scorecard row -- filled tinted chips, not just outlines
     n = len(ROWS)
-    left, right = 0.06, 0.97
-    gap = 0.018
-    chip_w = (right - left - gap * (n - 1)) / n
-    y0 = 0.06
-    chip_h = 0.22
+    right = 0.965
+    gap = 0.016
+    chip_w = (right - left_margin - gap * (n - 1)) / n
+    y0 = 0.055
+    chip_h = 0.20
 
     for i, (label, status, icon) in enumerate(ROWS):
-        x0 = left + i * (chip_w + gap)
+        x0 = left_margin + i * (chip_w + gap)
         color = STATUS[status]
         box = FancyBboxPatch((x0, y0), chip_w, chip_h,
-                              boxstyle="round,pad=0.004,rounding_size=0.012",
-                              linewidth=1.4, edgecolor=color, facecolor=SURFACE,
-                              transform=ax.transAxes, zorder=2)
+                              boxstyle="round,pad=0.002,rounding_size=0.014",
+                              linewidth=1.6, edgecolor=color, facecolor=color,
+                              alpha=0.10, transform=ax.transAxes, zorder=2)
         ax.add_patch(box)
+        # re-stroke the border at full opacity (the fill alpha above would
+        # otherwise fade the edge too)
+        border = FancyBboxPatch((x0, y0), chip_w, chip_h,
+                                 boxstyle="round,pad=0.002,rounding_size=0.014",
+                                 linewidth=1.6, edgecolor=color, facecolor="none",
+                                 transform=ax.transAxes, zorder=3)
+        ax.add_patch(border)
         cx = x0 + chip_w / 2
-        ax.text(cx, y0 + chip_h * 0.62, icon, fontsize=17, color=color,
-                 ha="center", va="center", fontweight="bold", zorder=3)
-        ax.text(cx, y0 + chip_h * 0.22, label, fontsize=8.3, color=INK,
-                 ha="center", va="center", zorder=3)
-
-    ax.text(0.06, 0.355, "Where it wins, and where it doesn't", fontsize=11,
-             color=MUTED, va="top", ha="left")
+        ax.text(cx, y0 + chip_h * 0.66, icon, fontsize=19, color=color,
+                 ha="center", va="center", fontweight="bold", zorder=4)
+        ax.text(cx, y0 + chip_h * 0.24, label, fontsize=9.2, color=INK,
+                 ha="center", va="center", zorder=4)
 
     out = FIGURES / "cover_linkedin.png"
     fig.savefig(out, dpi=100)
